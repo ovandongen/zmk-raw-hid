@@ -50,7 +50,14 @@ static void send_report(const uint8_t *data, uint8_t len) {
     k_sem_take(&hid_sem, K_MSEC(30));
 
     LOG_INF("USB - Sending Raw HID report of length %i", len);
-    uint8_t report[CONFIG_RAW_HID_REPORT_SIZE] = {0};
+    /* MUST be static: hid_int_ep_write() below is asynchronous — the nRF52840
+     * EasyDMA reads this buffer AFTER send_report() returns, while the caller's
+     * stack frame is being reused. A stack-local buffer here gets its tail
+     * overwritten by subsequent frames before the DMA drains, corrupting reports
+     * (notably bytes 24..31 when streaming back-to-back). hid_sem serializes one
+     * transfer at a time, so a single shared static buffer is safe. */
+    static uint8_t report[CONFIG_RAW_HID_REPORT_SIZE];
+    memset(report, 0, sizeof(report));
     memcpy(report, data, len);
     LOG_HEXDUMP_DBG(report, CONFIG_RAW_HID_REPORT_SIZE, "USB - Sending Raw HID report");
 
